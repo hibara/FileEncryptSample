@@ -1,13 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
 using System.Text;
 using System.IO;
 using System.IO.Compression;
-using System.Collections;
 using System.Security.Cryptography;
 using System.Windows.Forms;
 
@@ -153,6 +148,11 @@ namespace FileEncryptSample
 		//------------------------------------------------------------------------
 		private bool FileEncrypt(string FilePath, string Password)
 		{
+			//Stopwatchオブジェクトを作成する
+			System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
+			//ストップウォッチを開始する
+			sw.Start();
+
 			int i, len;
 			byte[] buffer = new byte[4096];
 
@@ -167,35 +167,42 @@ namespace FileEncryptSample
 					aes.KeySize = 128;                // KeySize = 16bytes
 					aes.Mode = CipherMode.CBC;        // CBC mode
 					aes.Padding = PaddingMode.PKCS7;	// Padding mode is "PKCS7".
-					// Password
+
+					byte[] salt = new byte[16];	// 16バイトのランダムなソルトを生成
+					RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider();
+					rng.GetNonZeroBytes(salt);
+					
+					//入力されたパスワードをベースに擬似乱数を新たに生成
+					Rfc2898DeriveBytes deriveBytes = new Rfc2898DeriveBytes(Password, salt, 1000);
+					// 生成した擬似乱数から16バイト切り出したデータをパスワードにする
+					byte[] bufferKey = deriveBytes.GetBytes(16);
+
+					/*
+					// パスワード文字列が大きい場合は、切り詰め、16バイトに満たない場合は0で埋めます
 					byte[] bufferKey = new byte[16];
 					byte[] bufferPassword = Encoding.UTF8.GetBytes(Password);
-					//パスワードは128bitなので、16バイトまで切り詰めるか、あるいはそのサイズまで埋める処理
 					for (i = 0; i < bufferKey.Length; i++)
 					{
 						if (i < bufferPassword.Length)
 						{
-							//Cut down to 16bytes characters.
 							bufferKey[i] = bufferPassword[i];
 						}
 						else
 						{
 							bufferKey[i] = 0;
 						}
-					}
+					*/
+
 					aes.Key = bufferKey;
 					// Initilization Vector
-					byte[] iv = new byte[16];
-					RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider();
-					rng.GetNonZeroBytes(iv);
-					aes.IV = iv;
+					aes.IV = salt;
 
 					//Encryption interface.
 					ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
 
 					using (CryptoStream cse = new CryptoStream(outfs, encryptor, CryptoStreamMode.Write))
-					{	// IV
-						outfs.Write(iv, 0, 16);	//ファイル先頭に埋め込む
+					{	// IV = salt
+						outfs.Write(salt, 0, 16);	//ファイル先頭に埋め込む
 						using (DeflateStream ds = new DeflateStream(cse, CompressionMode.Compress))	//圧縮
 						{
 							using (FileStream fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read))
@@ -211,8 +218,16 @@ namespace FileEncryptSample
 
 				}
 			}
+			//ストップウォッチを止める
+			sw.Stop();
+
+			//結果を表示する
+			long resultTime = sw.ElapsedMilliseconds;
+
 			//Encryption succeed.
 			textBox1.AppendText("暗号化成功: " + Path.GetFileName(OutFilePath) + Environment.NewLine);
+			textBox1.AppendText("実行時間: " + resultTime.ToString() + "ms");
+
 			return (true);
 		}
 
@@ -245,27 +260,32 @@ namespace FileEncryptSample
 						aes.KeySize = 128;                // KeySize = 16bytes
 						aes.Mode = CipherMode.CBC;        // CBC mode
 						aes.Padding = PaddingMode.PKCS7;	// Padding mode is "PKCS7".
-						// Password
+												
+						// Initilization Vector
+						byte[] iv = new byte[16];
+						fs.Read(iv, 0, 16);	//ファイル先頭から取得する
+						aes.IV = iv;
+
+						/*
+						// パスワード文字列が大きい場合は、切り詰め、16バイトに満たない場合は0で埋めます
 						byte[] bufferKey = new byte[16];
 						byte[] bufferPassword = Encoding.UTF8.GetBytes(Password);
-						//パスワードは128bitなので、16バイトまで切り詰めるか、あるいはそのサイズまで埋める処理
 						for (i = 0; i < bufferKey.Length; i++)
 						{
 							if (i < bufferPassword.Length)
 							{
-								//Cut down to 16bytes characters.
 								bufferKey[i] = bufferPassword[i];
 							}
 							else
 							{
 								bufferKey[i] = 0;
 							}
-						}
+						*/
+
+						// ivをsaltにしてパスワードを擬似乱数に変換
+						Rfc2898DeriveBytes deriveBytes = new Rfc2898DeriveBytes(Password, iv);
+						byte[] bufferKey = deriveBytes.GetBytes(16);	// 16バイト切り出してパスワードにする
 						aes.Key = bufferKey;
-						// Initilization Vector
-						byte[] iv = new byte[16];
-						fs.Read(iv, 0, 16);	//ファイル先頭から取得する
-						aes.IV = iv;
 
 						//Decryption interface.
 						ICryptoTransform decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
