@@ -168,12 +168,10 @@ namespace FileEncryptSample
 					aes.Mode = CipherMode.CBC;        // CBC mode
 					aes.Padding = PaddingMode.PKCS7;	// Padding mode is "PKCS7".
 
-					byte[] salt = new byte[16];	// 16バイトのランダムなソルトを生成
-					RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider();
-					rng.GetNonZeroBytes(salt);
-					
 					//入力されたパスワードをベースに擬似乱数を新たに生成
-					Rfc2898DeriveBytes deriveBytes = new Rfc2898DeriveBytes(Password, salt, 1000);
+					Rfc2898DeriveBytes deriveBytes = new Rfc2898DeriveBytes(Password, 16);
+					byte[] salt = new byte[16];	// Rfc2898DeriveBytesが内部生成したなソルトを取得
+					salt = deriveBytes.Salt;
 					// 生成した擬似乱数から16バイト切り出したデータをパスワードにする
 					byte[] bufferKey = deriveBytes.GetBytes(16);
 
@@ -202,7 +200,8 @@ namespace FileEncryptSample
 
 					using (CryptoStream cse = new CryptoStream(outfs, encryptor, CryptoStreamMode.Write))
 					{
-						outfs.Write(aes.IV, 0, 16);	// IVをファイル先頭に埋め込む
+						outfs.Write(salt, 0, 16);	  // salt をファイル先頭に埋め込む
+						outfs.Write(aes.IV, 0, 16);	// 次にIVもファイルに埋め込む
 						using (DeflateStream ds = new DeflateStream(cse, CompressionMode.Compress))	//圧縮
 						{
 							using (FileStream fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read))
@@ -261,9 +260,13 @@ namespace FileEncryptSample
 						aes.Mode = CipherMode.CBC;        // CBC mode
 						aes.Padding = PaddingMode.PKCS7;	// Padding mode is "PKCS7".
 												
+						// salt
+						byte[] salt = new byte[16];
+						fs.Read(salt, 0, 16);
+
 						// Initilization Vector
 						byte[] iv = new byte[16];
-						fs.Read(iv, 0, 16);	//ファイル先頭から取得する
+						fs.Read(iv, 0, 16);
 						aes.IV = iv;
 
 						/*
@@ -283,8 +286,8 @@ namespace FileEncryptSample
 						*/
 
 						// ivをsaltにしてパスワードを擬似乱数に変換
-						Rfc2898DeriveBytes deriveBytes = new Rfc2898DeriveBytes(Password, iv);
-						byte[] bufferKey = deriveBytes.GetBytes(16);	// 16バイト切り出してパスワードにする
+						Rfc2898DeriveBytes deriveBytes = new Rfc2898DeriveBytes(Password, salt);
+						byte[] bufferKey = deriveBytes.GetBytes(16);	// 16バイトのsaltを切り出してパスワードに変換
 						aes.Key = bufferKey;
 
 						//Decryption interface.
