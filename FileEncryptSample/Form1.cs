@@ -194,15 +194,15 @@ namespace FileEncryptSample
 					*/
 
 					aes.Key = bufferKey;
-					// Initilization Vector
-					aes.IV = salt;
+					// IV ( Initilization Vector ) は、AesManagedにつくらせる
+					aes.GenerateIV();
 
 					//Encryption interface.
 					ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
 
 					using (CryptoStream cse = new CryptoStream(outfs, encryptor, CryptoStreamMode.Write))
-					{	// IV = salt
-						outfs.Write(salt, 0, 16);	//ファイル先頭に埋め込む
+					{
+						outfs.Write(aes.IV, 0, 16);	// IVをファイル先頭に埋め込む
 						using (DeflateStream ds = new DeflateStream(cse, CompressionMode.Compress))	//圧縮
 						{
 							using (FileStream fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read))
